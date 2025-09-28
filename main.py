@@ -3,13 +3,14 @@ import os
 import random
 from flask import Flask
 from threading import Thread
+from pathlib import Path # 新しくインポート
 
 # Flaskのアプリケーションインスタンスを作成
 app = Flask('')
-# Botがすでに起動しているかどうかを記録するフラグ
-app.bot_started = False 
+# Botが起動したことを示すログファイルのパスを定義
+BOT_FLAG_FILE = Path("bot_running.log") 
 
-# Botのロジック部分をカプセル化
+# Botのロジック部分
 def start_discord_bot():
     # ランダムに選択する応答メッセージリスト
     RANDOM_RESPONSES = [
@@ -30,6 +31,15 @@ def start_discord_bot():
         print('---------------------------------')
         print(f'Botがログインしました: {client.user.name}')
         print('---------------------------------')
+        
+        # Botが正常に起動した時点でフラグファイルを作成
+        # これがBotが「生きている」ことを示す共有フラグになります。
+        try:
+            with open(BOT_FLAG_FILE, 'w') as f:
+                f.write("Bot is running.")
+            print("Bot起動フラグファイルを作成しました。")
+        except Exception as e:
+            print(f"フラグファイル作成エラー: {e}")
 
     @client.event
     async def on_message(message):
@@ -48,10 +58,12 @@ def start_discord_bot():
 # WebアクセスがあったときにBotの起動を試みるエンドポイント
 @app.route('/')
 def home():
-    # フラグを確認し、Botがまだ起動していない場合のみ起動する
-    if not app.bot_started:
+    # 共有フラグファイルが存在するかどうかをチェック
+    if not BOT_FLAG_FILE.exists():
+        # フラグファイルがない（Botが起動していない）場合のみ起動
         thread = Thread(target=start_discord_bot)
         thread.start()
-        app.bot_started = True # フラグを立てて、二度と起動させない
-        return "Discord Bot is initializing..."
-    return "Discord Bot is running."
+        return "Discord Bot is initializing (Checking flag file)..."
+    
+    # フラグファイルが存在する場合（Botが起動済み）は、すぐにWebサーバーの応答を返す
+    return "Discord Bot is running (Flag file found)."
