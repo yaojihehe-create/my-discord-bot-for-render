@@ -2,73 +2,61 @@ import discord
 import os
 import random
 from flask import Flask
-
-# Flaskのアプリケーションインスタンスを作成（Webサーバー機能）
-# RenderのWebサービスとして起動するために必要
-app = Flask(__name__)
+from threading import Thread
 
 # -----------------
-# Webサーバー機能（Renderの生存確認用）
+# Webサーバーを起動してBotの24時間稼働を維持する関数
 # -----------------
-# RenderがBotが生きているか確認するアクセスに応答します
-@app.route('/')
-def home():
-    return "Discord Bot is running and the web server is alive."
+def keep_alive():
+    app = Flask('')
+    @app.route('/')
+    def home():
+        return "Bot is alive!"
+    # Renderの環境変数を使い、0.0.0.0と環境変数PORTでWebサーバーを起動
+    # Webサーバーは別スレッドで実行され、Botの起動をブロックしない
+    app.run(host='0.0.0.0', port=os.environ.get('PORT', 8080))
+    # 注意：RenderがこのWebサーバーを複数回起動しようとするのが問題の原因でした
 
+# ランダムに選択する応答メッセージリスト
+RANDOM_RESPONSES = [
+    "「このうさぎさんは、笑うこともできるんです」﻿",
+    "「どれだけ間が悪くとも、捕まえるまで絶対にあきらめません！」﻿",
+    "「バリスタの力…！」﻿",
+    "「ココアさんのバカー！」﻿",
+    "「物理部好きです」"
+]
 
-# -----------------
-# Discord Bot本体の起動関数
-# -----------------
-def run_discord_bot():
-    # ランダムに選択する応答メッセージリスト
-    RANDOM_RESPONSES = [
-        "「このうさぎさんは、笑うこともできるんです」﻿",
-        "「どれだけ間が悪くとも、捕まえるまで絶対にあきらめません！」﻿",
-        "「バリスタの力…！」﻿",
-        "「ココアさんのバカー！」﻿",
-        "「物理部好きです」"
-    ]
-    
-    # 認証情報の取得（環境変数から読み込む）
-    TOKEN = os.getenv("DISCORD_TOKEN") 
-    
-    # Botの設定（必要なインテントを設定）
-    intents = discord.Intents.default()
-    intents.message_content = True 
-    client = discord.Client(intents=intents)
-
-    # Botが起動し、Discordに接続したときに実行される
-    @client.event
-    async def on_ready():
-        print('---------------------------------')
-        print(f'Botがログインしました: {client.user.name}')
-        print('---------------------------------')
-
-    # メッセージを受信したときに実行される
-    @client.event
-    async def on_message(message):
-        # 自分のメッセージには反応しない
-        if message.author == client.user:
-            return
-
-        # メンションに反応する処理
-        if client.user.mentioned_in(message):
-            response = random.choice(RANDOM_RESPONSES)
-            await message.channel.send(f'{message.author.mention} {response}')
-            return 
-    
-    # Botトークンが設定されている場合のみ実行
-    if TOKEN:
-        # Botを起動
-        client.run(TOKEN)
-    else:
-        print("エラー: Botトークンが設定されていません。環境変数 DISCORD_TOKEN を設定してください。")
-
+# 認証情報の取得
+TOKEN = os.getenv("DISCORD_TOKEN") 
+intents = discord.Intents.default()
+intents.message_content = True 
+client = discord.Client(intents=intents)
 
 # -----------------
-# メイン実行ブロック
+# イベントハンドラ
 # -----------------
-# このファイルが「Bot本体」として直接実行された場合にBotを起動
-if __name__ == '__main__':
-    run_discord_bot()
-# gunicornがこのファイルをWebサーバーとして実行する場合、appインスタンスが使用されます。
+@client.event
+async def on_ready():
+    print('---------------------------------')
+    print(f'Botがログインしました: {client.user.name}')
+    print('---------------------------------')
+
+@client.event
+async def on_message(message):
+    if message.author == client.user:
+        return
+    if client.user.mentioned_in(message):
+        response = random.choice(RANDOM_RESPONSES)
+        await message.channel.send(f'{message.author.mention} {response}')
+        return 
+
+# -----------------
+# Botの実行
+# -----------------
+if TOKEN:
+    # 24時間稼働Webサーバーを別スレッドで起動
+    Thread(target=keep_alive).start()
+    # Botを起動
+    client.run(TOKEN)
+else:
+    print("エラー: Botトークンが設定されていません。")
