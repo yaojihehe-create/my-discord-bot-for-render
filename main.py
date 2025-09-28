@@ -1,8 +1,8 @@
 import discord
 import os
 import random
-
-# Flask と Thread のインポートは削除
+from flask import Flask # 復活
+from threading import Thread # 復活
 
 # ランダムに選択する応答メッセージリスト
 RANDOM_RESPONSES = [
