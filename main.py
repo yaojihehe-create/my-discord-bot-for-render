@@ -5,10 +5,11 @@ from flask import Flask
 from threading import Thread
 
 # Flaskのアプリケーションインスタンスを作成
-# RenderはこれをWebサーバーとして認識します。
 app = Flask('')
+# Botがすでに起動しているかどうかを記録するフラグ
+app.bot_started = False 
 
-# Botの実行を別スレッドで処理する関数
+# Botのロジック部分をカプセル化
 def start_discord_bot():
     # ランダムに選択する応答メッセージリスト
     RANDOM_RESPONSES = [
@@ -47,12 +48,10 @@ def start_discord_bot():
 # WebアクセスがあったときにBotの起動を試みるエンドポイント
 @app.route('/')
 def home():
-    # Webアクセス時にBotが起動していない場合のみ、Botを別スレッドで起動
-    # これにより、Webサーバーは応答し続け、Botは独立して動作します。
-    if not hasattr(app, 'bot_thread'):
-        app.bot_thread = Thread(target=start_discord_bot)
-        app.bot_thread.start()
+    # フラグを確認し、Botがまだ起動していない場合のみ起動する
+    if not app.bot_started:
+        thread = Thread(target=start_discord_bot)
+        thread.start()
+        app.bot_started = True # フラグを立てて、二度と起動させない
         return "Discord Bot is initializing..."
     return "Discord Bot is running."
-
-# Botを直接実行するのではなく、Render/gunicornにWebアプリ（app）を渡します。
