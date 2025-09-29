@@ -3,23 +3,27 @@ import os
 import random
 from flask import Flask
 from threading import Thread
+import time
 
 # Flaskのアプリケーションインスタンスを作成（gunicornが実行するWebサーバー）
 app = Flask(__name__) 
-# Botがすでに起動しているかを示すフラグ（ワーカーごとにチェック）
-# gunicornのワーカープロセスが立ち上がるときにFalseに初期化されます
-app.bot_started = False 
+
+# グローバルフラグ：Botが起動を試みたかを示す（ワーカー間で完全な同期はしないが、セーフティネットとして使用）
+# gunicornの各ワーカープロセスで独立して初期化されます
+bot_start_attempted = False
 
 # -----------------
 # Discord Bot本体の起動関数
 # -----------------
 def run_discord_bot():
-    # ランダムに選択する応答メッセージリスト
+    global bot_start_attempted
+
+    # 応答メッセージリスト
     RANDOM_RESPONSES = [
-    "「このうさぎさんは、笑うこともできるんです」﻿",
-    "「どれだけ間が悪くとも、捕まえるまで絶対にあきらめません！」﻿",
-    "「バリスタの力…！」﻿",
-    "「ココアさんのバカー！」﻿",
+    "「このうさぎさんは、笑うこともできるんです」",
+    "「どれだけ間が悪くとも、捕まえるまで絶対にあきらめません！」",
+    "「バリスタの力…！」",
+    "「ココアさんのバカー！」",
     "「物理部好きです」"
     ]
 
@@ -30,24 +34,27 @@ def run_discord_bot():
 
     @client.event
     async def on_ready():
-        global app
         print('---------------------------------')
         print(f'Botがログインしました: {client.user.name}')
         print('---------------------------------')
-        # Botが起動に成功したらフラグを立てる
-        app.bot_started = True 
 
     @client.event
     async def on_message(message):
         if message.author == client.user:
             return
+        # Botへのメンションでの応答
         if client.user.mentioned_in(message):
             response = random.choice(RANDOM_RESPONSES)
             await message.channel.send(f'{message.author.mention} {response}')
             return 
     
     if TOKEN:
-        client.run(TOKEN)
+        # Botの起動を試行する
+        try:
+            client.run(TOKEN)
+        except Exception as e:
+            # トークンエラーなど、起動失敗時のログ
+            print(f"Discord Bot 起動失敗: {e}")
     else:
         print("エラー: Botトークンが設定されていません。")
 
@@ -56,14 +63,21 @@ def run_discord_bot():
 # -----------------
 @app.route('/')
 def home():
-    # Botが起動していない場合のみ、Botを起動する
-    if not app.bot_started:
-        # WebアクセスをきっかけにBotを別スレッドで起動
-        # この処理はgunicornワーカー内で1回だけ実行されます
-        Thread(target=run_discord_bot).start()
-        return "Discord Bot is initializing..."
+    global bot_start_attempted
     
-    # Botが起動済みの場合は、Renderのヘルスチェックに応答
+    # 致命的な二重起動を防ぐセーフティネットの強化
+    if not bot_start_attempted:
+        print("Webアクセスを検知。Discord Botの起動を試みます...")
+        # フラグを立てて、このワーカーでは再起動しないようにする
+        bot_start_attempted = True
+        
+        # Botを別スレッドで起動
+        Thread(target=run_discord_bot).start()
+        
+        # 初回起動時は応答が遅れるため、Initializingを返す
+        return "Discord Bot is initializing... (Please check Discord in 10 seconds)"
+    
+    # Bot起動試行済みの場合は、Renderのヘルスチェックに応答
     return "Bot is alive!"
 
 # ----------------------------------------------------
